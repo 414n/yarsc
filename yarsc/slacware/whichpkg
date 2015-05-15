@@ -1,0 +1,74 @@
+#!/bin/sh
+# A simple grep wrapper to search for files/patterns inside Slackware
+# package index in /var/log/packages.
+#
+# Copyright 2012 Alan Alberghini
+# All rights reserved.
+#
+# Redistribution and use of this script, with or without modification, is
+# permitted provided that the following conditions are met:
+#
+# 1. Redistributions of this script must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE AUTHOR "AS IS" AND ANY EXPRESS OR IMPLIED
+#  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+#  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO
+#  EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+#  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+#  OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+#  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+#  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+#  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+GREP_OPTS="--color=always "
+
+function usage ()
+{
+	cat <<EOF
+Usage:
+whichpkg OPTIONS PATTERN
+where pattern can be:
+	the relative or absolute path to a file
+	a grep pattern
+Available options:
+-i	case insensitive search
+-c 0/1	enable/disable color highlighting (default=enabled)
+-p	show only the list of packages that contain at least a match
+EOF
+}
+
+
+if [ $# -eq 0 ]
+then
+	usage
+	exit 1
+fi
+
+while getopts "ic:p" OPTION
+do
+	case "$OPTION" in
+	i)
+		GREP_OPTS+="-i "
+		;;
+	c)
+		if [ "x${OPTARG}" == x0 ]
+		then
+			GREP_OPTS+=" --color=never "
+		fi
+		;;
+	p)
+		GREP_OPTS+=" -l "
+		;;
+	esac
+done
+
+shift $((OPTIND-1))
+
+# Relativize pattern, if necessary
+PATTERN="${1}"
+
+cd /var/log/packages
+grep $GREP_OPTS "$1" * 
