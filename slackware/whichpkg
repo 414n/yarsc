@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # A simple grep wrapper to search for files/patterns inside Slackware
 # package index in /var/log/packages.
 #
@@ -68,7 +68,7 @@ done
 shift $((OPTIND-1))
 
 # Relativize pattern, if necessary
-PATTERN="${1}"
+PATTERN="${1#/}"
 
 cd /var/log/packages
-grep $GREP_OPTS "$1" * 
+grep $GREP_OPTS "${PATTERN}" * 
