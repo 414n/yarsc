@@ -1,0 +1,114 @@
+#!/bin/sh
+
+# Wrapper to build a compat32 package. This script perform a series of
+# operations to first build a 32 bit package in a 64 bit multilib environment,
+# and then produces a compat32 package out of it.
+# Arguments:
+# $1: SlackBuild file (Optional - first SlackBuild found in pwd is chosen
+#     otherwise)
+#
+# Copyright (c) 2011 Alan Alberghini
+# All rights reserved.
+#
+#   Permission to use, copy, modify, and distribute this software for
+#   any purpose with or without fee is hereby granted, provided that
+#   the above copyright notice and this permission notice appear in all
+#   copies.
+#
+#   THIS SOFTWARE IS PROVIDED AS IS'' AND ANY EXPRESSED OR IMPLIED
+#   WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+#   MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+#   IN NO EVENT SHALL THE AUTHORS AND COPYRIGHT HOLDERS AND THEIR
+#   CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+#   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+#   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+#   USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+#   ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+#   OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+#   OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+#   SUCH DAMAGE.
+# -----------------------------------------------------------------------------
+
+# Sanity checks
+
+# Become root and relaunch script if launched as unprivileged user
+
+if [ $USER != root ]
+then
+	su -c "$0 "`pwd`/$SCRIPT" "$@""
+	exit 0
+fi
+
+if [ x"$(which convertpkg-compat32 2>/dev/null)" == x ]
+then
+	echo "Couldn't find convertpkg-compat32 in the PATH. Please check your
+	compat32-tools package installation."
+	exit 1
+fi
+
+
+if [ $# -eq 0 ]
+then
+	# If no argument is supplied, we launch the first SlackBuild we
+	# find in current directory
+	
+	SCRIPT=$( ls *.SlackBuild | head -n 1)
+	if [ x"${SCRIPT}" == x ]
+	then
+		echo "No SlackBuild supplied as argument and none found in current directory. Exiting..."
+		exit 1
+	fi
+else
+	SCRIPT="$1"
+	shift
+fi
+
+
+if ! [ -r "${SCRIPT}" ]
+then
+	echo "The SlackBuild ${SCRIPT} is not readable. Please do something or the Matrix will win."
+	exit 1
+fi
+
+echo -n "Setting 32-bit compiling environment..."
+. /etc/profile.d/32dev.sh || exit 1
+echo "Done!"
+
+# Copy the SlackBuild to a temporary file, in order to apply some modifications
+
+TEMPFILE=`mktemp`
+cp "$SCRIPT" "$TEMPFILE"
+chmod +x "$TEMPFILE"
+
+# Remove 64 suffix from libdir: we'll build a 32 bit package, but ARCH will still be
+# detected as x86_64 by the SlackBuild
+sed -i 's/LIBDIRSUFFIX=.*64.*/LIBDIRSUFFIX=""/g' "$TEMPFILE"
+
+# Safety (shouldn't be necessary): add a removal of /usr/lib64 files after the
+# original lines of the SlackBuild, if any. They must NOT overwrite libs from a 
+# pure 64 bit package!
+echo "rm -rf \$PKG/usr/lib64" >> "$TEMPFILE"
+
+# We then add the finishing touches. As it is now, the SlackBuild creates a
+# full-fledged 32 bit package, but we just need a compat32 version of it 
+# (no headers, no docs, only binaries in the correct places).
+
+OUTFILEINFO=$(grep -n 'makepkg ' "$SCRIPT")
+OUTFILELINE=`echo "$OUTFILEINFO" | cut -d: -f1`
+OUTFILE=${OUTFILEINFO##* }
+
+# First, let's change package tag to a non standard one, in order to prevent 
+# an overwrite of a same-named 64 bit package already in $OUTDIR that  would
+# otherwise get lost;
+sed -i "${OUTFILELINE}i\TAG=compat32" "$TEMPFILE"
+# Last: Let's append the compat32 package creation to the SlackBuild...
+echo "convertpkg-compat32 -i \""$OUTFILE"\"" >> "$TEMPFILE"
+# ... and let's remove the original, non-stripped down package
+echo "rm \""$OUTFILE"\"" >> "$TEMPFILE"
+
+# Finally, launch the modified SlackBuild. LDFLAGS is overridden because some package
+# may need that.
+LDFLAGS="-L/usr/lib" exec linux32 "$TEMPFILE" "$@"
+
+# Remove the temporary SlackBuild created
+rm "$TEMPFILE"
